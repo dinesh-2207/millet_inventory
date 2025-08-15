@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Distributor Dashboard • Millet Supply Chain</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+<style>
+body { background: #f5f7fa; font-family: 'Segoe UI', sans-serif; }
+.navbar { background-color: #e8f5e9; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+.navbar-brand { font-weight: bold; font-size: 1.5rem; color: #2e7d32 !important; }
+.sidebar { min-height: 100vh; background: #2e7d32; color: #fff; padding: 1rem; }
+.sidebar a { color: #fff; display: block; margin-bottom: 1rem; text-decoration: none; font-weight: 500; }
+.sidebar a:hover { text-decoration: underline; }
+.card { border: 0; border-radius: 1rem; box-shadow: 0 6px 20px rgba(0,0,0,.05); }
+.card-header { background-color: #e8f5e9; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="#">
+      <img src="https://cdn-icons-png.flaticon.com/512/7651/7651380.png" height="36" class="me-2" />
+      Distributor Dashboard – Millet Supply Chain
+    </a>
+    <span class="ms-3 text-success" id="warehouseName"></span>
+  </div>
+</nav>
+
+<div class="d-flex">
+  <div class="sidebar">
+    <h4 class="mb-4">🚚 Distributor Menu</h4>
+    <a href="#" onclick="showSection('stock')">📦 My Stock</a>
+    <a href="#" onclick="showSection('placeOrder')">📝 Place Order</a>
+    <a href="#" onclick="showSection('orderHistory')">📜 Order History</a>
+    <a href="#" onclick="showSection('sales')">💰 Sales Entry</a>
+  </div>
+
+  <div class="flex-grow-1 p-4">
+
+    <!-- My Stock -->
+    <div class="card mb-4" id="stock">
+      <div class="card-header">📦 Current Stock</div>
+      <div class="card-body">
+        <table class="table table-bordered">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Product</th>
+              <th>SKU</th>
+              <th>Qty Available</th>
+              <th>Pending Orders</th>
+              <th>MRP</th>
+            </tr>
+          </thead>
+          <tbody id="stockTable"><tr><td colspan="6" class="text-muted">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Place Order -->
+    <div class="card mb-4" id="placeOrder" style="display:none">
+      <div class="card-header">📝 Place New Order</div>
+      <div class="card-body">
+        <form id="orderForm">
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="productSelect">Product</label>
+              <select name="productId" class="form-select" required id="productSelect"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="qty">Quantity</label>
+              <input type="number" name="qty" class="form-control" required min="1" id="qty" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success">Place Order</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Order History -->
+    <div class="card mb-4" id="orderHistory" style="display:none">
+      <div class="card-header">📜 Order History</div>
+      <div class="card-body">
+        <table class="table table-striped">
+          <thead><tr><th>#</th><th>Warehouse</th><th>Distributor</th><th>Product</th><th>Qty</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody id="historyTable"><tr><td colspan="8" class="text-muted">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sales Entry -->
+    <div class="card" id="sales" style="display:none">
+      <div class="card-header">💰 Enter Sales</div>
+      <div class="card-body">
+        <form id="salesForm">
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label" for="salesProduct">Product</label>
+              <select name="productId" class="form-select" required id="salesProduct"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="salesQty">Qty Sold</label>
+              <input type="number" name="qty" class="form-control" required min="1" id="salesQty" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success">Record Sale</button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+let distributorId = localStorage.getItem("distributorId") || 1;
+let distributorName = "Distributor";
+let warehouseName = "";
+let productMap = {};
+let warehouseStock = [];
+let pendingOrdersMap = {}; // productId => pendingQty
+
+function showSection(id) {
+  ['stock', 'placeOrder', 'orderHistory', 'sales'].forEach(s => {
+    document.getElementById(s).style.display = s === id ? 'block' : 'none';
+  });
+  if (id === 'stock') renderStockTable();
+  if (id === 'orderHistory') loadHistory();
+  if (id === 'sales') loadSales();
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadDistributorInfo();
+  await loadStock();
+  await loadProductOptions();
+  updateOrderMax();
+  showSection('stock');
+});
+
+// Load distributor info from backend
+async function loadDistributorInfo() {
+  try {
+    const res = await fetch(`https://millet-backend.onrender.com/api/distributor/info?distributorId=${distributorId}`);
+    const data = await res.json();
+    distributorName = data.data.name || "Distributor";
+    warehouseName = data.data.warehouse || "Unknown Warehouse";
+    document.getElementById("warehouseName").textContent = `Warehouse: ${warehouseName}`;
+  } catch (err) {
+    console.error(err);
+    document.getElementById("warehouseName").textContent = `Warehouse: Unknown`;
+  }
+}
+
+// Load stock + pending orders
+async function loadStock() {
+  try {
+    const res = await fetch(`https://millet-backend.onrender.com/api/distributor/stock?distributorId=${distributorId}`);
+    const data = await res.json();
+    warehouseStock = data.stock || [];
+    productMap = {};
+    warehouseStock.forEach(item => productMap[item.productId] = item.productName);
+
+    // Initialize pendingOrdersMap from backend (orders not delivered yet)
+    pendingOrdersMap = {};
+    const ordersRes = await fetch(`https://millet-backend.onrender.com/api/distributor/orders?distributorId=${distributorId}`);
+    const ordersData = await ordersRes.json();
+    ordersData.orders.forEach(o => {
+      if (o.status.toLowerCase() !== 'delivered') {
+        pendingOrdersMap[o.productId] = (pendingOrdersMap[o.productId] || 0) + o.qty;
+      }
+    });
+
+    renderStockTable();
+    await loadProductOptions(); // corrected
+    loadHistory();
+  } catch (err) {
+    console.error(err);
+    document.getElementById("stockTable").innerHTML = `<tr><td colspan="6" class="text-danger">Failed to load stock.</td></tr>`;
+  }
+}
+
+// ✅ Load product options filtered by distributor's warehouse
+async function loadProductOptions() {
+    const productSelect = document.getElementById("productSelect");
+    const salesProduct = document.getElementById("salesProduct");
+    const qtyInput = document.getElementById("qty"); // unified input field
+    const maxQtyText = document.getElementById("maxQtyText"); // <span id="maxQtyText"></span>
+
+    productSelect.innerHTML = "";
+    salesProduct.innerHTML = "";
+
+    try {
+        const res = await fetch(
+            `https://millet-backend.onrender.com/api/distributor/products?distributorId=${distributorId}`
+        );
+        const data = await res.json();
+
+        if (!data.products || data.products.length === 0) {
+            const noOpt = '<option disabled selected>No products available</option>';
+            productSelect.innerHTML = noOpt;
+            salesProduct.innerHTML = noOpt;
+            return;
+        }
+
+        // Store product stock in a map
+        const productStockMap = {};
+
+        // Filter out 0-stock products ✅
+        const availableProducts = data.products.filter(p => p.qty > 0);
+
+        if (availableProducts.length === 0) {
+            const noOpt = '<option disabled selected>All products out of stock</option>';
+            productSelect.innerHTML = noOpt;
+            salesProduct.innerHTML = noOpt;
+            return;
+        }
+
+        availableProducts.forEach(p => {
+            productStockMap[p.id] = p.qty;
+            const optionText = `${p.name} (Stock: ${p.qty})`;
+            const opt = `<option value="${p.id}">${optionText}</option>`;
+            productSelect.innerHTML += opt;
+            salesProduct.innerHTML += opt;
+        });
+
+        // ✅ Ensure we don't stack multiple listeners
+        productSelect.onchange = function () {
+            const selectedId = productSelect.value;
+            const stock = productStockMap[selectedId] || 0;
+            qtyInput.max = stock;
+            qtyInput.placeholder = `Max: ${stock}`;
+            if (maxQtyText) maxQtyText.textContent = `Max: ${stock}`;
+        };
+
+        // Trigger initial update
+        productSelect.onchange();
+
+    } catch (err) {
+        console.error("❌ Failed to load products:", err);
+        const errorOpt = '<option disabled selected>Error loading products</option>';
+        productSelect.innerHTML = errorOpt;
+        salesProduct.innerHTML = errorOpt;
+    }
+}
+
+// Stock Table Rendering (unchanged)
+function renderStockTable() {
+    const tbody = document.getElementById("stockTable");
+    tbody.innerHTML = "";
+    if (!warehouseStock.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No stock found.</td></tr>`;
+        return;
+    }
+    warehouseStock.forEach((item, i) => {
+        const pending = pendingOrdersMap[item.productId] || 0;
+        tbody.innerHTML += `<tr>
+            <td>${i+1}</td>
+            <td>${item.productName}</td>
+            <td>${item.sku}</td>
+            <td>${item.qty}</td>
+            <td>${pending}</td>
+            <td>₹${item.mrp}</td>
+        </tr>`;
+    });
+}
+
+// Place Order
+document.getElementById("orderForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  const productId = document.getElementById("productSelect").value;
+  const qtyInput = document.getElementById("qty");
+  const qty = parseInt(qtyInput.value, 10);
+
+  if (!productId) return alert("Select a product");
+  if (!qty || qty <= 0) return alert("Enter a valid quantity");
+  if (qty > parseInt(qtyInput.max)) return alert(`Cannot order more than available stock (${qtyInput.max})`);
+
+  const productName = productMap?.[productId] || "Unknown Product";
+
+  try {
+    await fetch("https://millet-backend.onrender.com/api/distributor/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ distributorId, productId, qty })
+    });
+
+    await fetch("https://millet-backend.onrender.com/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: distributorName, description: `📝 Placed order for ${qty} units of ${productName}` })
+    });
+
+    alert("✅ Order placed!");
+    this.reset();
+
+    await loadProductOptions(); // refresh stock
+    loadHistory();
+    showSection("orderHistory");
+
+  } catch (err) {
+    console.error(err);
+    alert("❌ Failed to place order");
+  }
+});
+
+// Sales Entry
+document.getElementById("salesForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+  const productId = document.getElementById("salesProduct").value;
+  const qty = parseInt(document.getElementById("salesQty").value, 10);
+  if (!qty || qty <= 0) return alert("Enter valid quantity");
+  const productName = productMap[productId];
+
+  try {
+    await fetch("https://millet-backend.onrender.com/api/distributor/sales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ distributorId, productId, qty })
+    });
+
+    await fetch("https://millet-backend.onrender.com/api/activity-log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: distributorName, description: `Sold ${qty} units of ${productName}` })
+    });
+
+    alert("✅ Sale recorded!");
+    this.reset();
+
+    const stockItem = warehouseStock.find(item => item.productId == productId);
+    if(stockItem) stockItem.qty -= qty;
+
+    renderStockTable();
+    await loadProductOptions();
+    updateOrderMax();
+    showSection('stock');
+  } catch (err) {
+    console.error(err);
+    alert("Failed to record sale");
+  }
+});
+
+// Load Order History
+async function loadHistory() {
+  try {
+    const res = await fetch(`https://millet-backend.onrender.com/api/distributor/orders?distributorId=${distributorId}`);
+    const data = await res.json();
+    const tbody = document.getElementById("historyTable");
+
+    if (!data.orders || data.orders.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center">No orders found</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = "";
+    data.orders.forEach((o, index) => {
+      const actionHtml = o.status.toLowerCase() === 'shipped'
+        ? `<button class="btn btn-sm btn-success" onclick="confirmDelivery(${o.id})">Confirm Delivery</button>`
+        : '—';
+
+      tbody.innerHTML += `<tr>
+        <td>${index + 1}</td>
+        <td>${warehouseName}</td>
+        <td>${distributorName}</td>
+        <td>${productMap[o.productId] || 'Unknown'}</td>
+        <td>${o.qty}</td>
+        <td>${o.status}</td>
+        <td>${o.order_date}</td>
+        <td>${actionHtml}</td>
+      </tr>`;
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// Confirm delivery
+async function confirmDelivery(orderId) {
+  if (!confirm("Confirm delivery?")) return;
+  try {
+    const res = await fetch('https://millet-backend.onrender.com/api/distributor/confirm-delivery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId })
+    });
+    const data = await res.json();
+    if(data.success) {
+      alert("✅ Delivery confirmed!");
+      await loadStock();
+    } else alert("❌ Failed: " + (data.message || "Unknown"));
+  } catch (err) {
+    console.error(err);
+    alert("❌ Network error");
+  }
+}
+
+// Load Sales (optional, for logs)
+async function loadSales() {
+  try {
+    const res = await fetch(`https://millet-backend.onrender.com/api/distributor/sales?distributorId=${distributorId}`);
+    const data = await res.json();
+    console.log("Sales data", data.sales);
+  } catch (err) {
+    console.error(err);
+  }
+}
+</script>
+</body>
+</html>

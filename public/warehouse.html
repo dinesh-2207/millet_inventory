@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Warehouse Dashboard • Millet Supply Chain</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body { background: #f5f7fa; font-family: 'Segoe UI', sans-serif; }
+    .navbar { background-color: #e8f5e9; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    .navbar-brand { font-weight: bold; font-size: 1.5rem; color: #2e7d32 !important; }
+    .sidebar { min-height: 100vh; background: #2e7d32; color: #fff; padding: 1rem; }
+    .sidebar a { color: #fff; display: block; margin-bottom: 1rem; text-decoration: none; font-weight: 500; }
+    .sidebar a:hover { text-decoration: underline; }
+    .card { border: 0; border-radius: 1rem; box-shadow: 0 6px 20px rgba(0,0,0,0.05); }
+    .card-header { background-color: #e8f5e9; font-weight: 600; }
+    .form-label-sm { font-size: 0.85rem; color: #555; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="#">
+      <img src="https://cdn-icons-png.flaticon.com/512/7651/7651380.png" height="36" class="me-2" />
+      Warehouse Dashboard – Millet Supply Chain
+    </a>
+  </div>
+</nav>
+
+<div class="d-flex">
+  <div class="sidebar">
+    <h4 class="mb-4">🏢 Warehouse Menu</h4>
+    <a href="#" onclick="showSection('inventory')">📦 Inventory</a>
+    <a href="#" onclick="showSection('orders')">📬 Incoming Orders</a>
+    <a href="#" onclick="showSection('addStock')">➕ Add Stock</a>
+    <a href="#" onclick="showSection('dispatchLog')">🔎 Activity Log</a>
+    <a href="#" onclick="showSection('customerPurchase')">💳 Customer Purchase</a>
+  </div>
+
+  <div class="flex-grow-1 p-4">
+
+    <!-- Inventory -->
+    <div class="card mb-4" id="inventory">
+      <div class="card-header">📦 Current Inventory</div>
+      <div class="card-body">
+        <table class="table table-bordered">
+          <thead><tr><th>#</th><th>Product</th><th>SKU</th><th>EAN</th><th>Unit</th><th>Qty</th><th>MRP</th></tr></thead>
+          <tbody id="inventoryTable"><tr><td colspan="7" class="text-muted">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Incoming Orders -->
+    <div class="card mb-4" id="orders" style="display:none">
+      <div class="card-header">📬 Incoming Orders</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <strong>Status Summary:</strong>
+          🖓 Pending: <span id="pendingCount">0</span> |
+          ✅ Delivered: <span id="deliveredCount">0</span> |
+          🚚 Shipped: <span id="shippedCount">0</span>
+        </div>
+        <button class="btn btn-outline-success btn-sm mb-2" onclick="exportOrdersToExcel()">📄 Export to Excel</button>
+        <select id="statusFilter" class="form-select w-25 mb-3">
+          <option value="">-- Filter Status --</option>
+          <option value="Pending">Pending</option>
+          <option value="Shipped">Shipped</option>
+          <option value="Delivered">Delivered</option>
+        </select>
+        <table class="table table-striped">
+          <thead><tr><th>#</th><th>Warehouse ID</th><th>Distributor</th><th>Product</th><th>Qty</th><th>Status</th><th>Created At</th><th>Action</th></tr></thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add Stock -->
+    <div class="card mb-4" id="addStock" style="display:none">
+      <div class="card-header">➕ Add New Stock</div>
+      <div class="card-body">
+        <form id="stockForm">
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Product</label>
+              <select class="form-select" name="product" id="productSelect" required></select>
+              <div class="form-label-sm mt-1">
+                Unit: <span id="unitDisplay">-</span> |
+                EAN: <span id="eanDisplay">-</span> |
+                SKU: <span id="skuDisplay">-</span>
+              </div>
+            </div>
+          </div>
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Quantity</label>
+              <input type="number" class="form-control" name="qty" id="qtyInput" min="1" required />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-success">Add Stock</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="card mb-4" id="dispatchLog" style="display:none">
+      <div class="card-header">🔎 Activity Log</div>
+      <div class="card-body">
+        <table class="table table-bordered">
+          <thead><tr><th>#</th><th>Source</th><th>Description</th><th>Timestamp</th></tr></thead>
+          <tbody id="activityListTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Customer Purchase -->
+    <div class="card mb-4" id="customerPurchase" style="display:none">
+      <div class="card-header">💳 Direct Customer Purchase</div>
+      <div class="card-body">
+        <form id="purchaseForm">
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Customer Name</label>
+              <input type="text" class="form-control" name="customerName" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Product Name</label>
+              <select class="form-select" name="productName" id="purchaseProductSelect" required></select>
+              <div class="form-label-sm mt-1" id="purchaseProductAvailability">Available Quantity: -</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Quantity</label>
+              <input type="number" class="form-control" name="quantity" min="1" required />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Submit Purchase</button>
+        </form>
+        <div class="mt-4">
+          <h6>🧾 Recent Customer Purchases</h6>
+          <table class="table">
+            <thead><tr><th>#</th><th>Warehouse Name</th><th>Customer</th><th>Product</th><th>Qty</th><th>Date</th></tr></thead>
+            <tbody id="purchaseHistoryTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>  
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  const warehouseId = localStorage.getItem("warehouseId");
+  const warehouseName = localStorage.getItem("warehouseName");
+if (!warehouseId) {
+  alert("❌ Warehouse ID missing. Please login again.");
+  window.location.href = "login.html";  // or your login page
+}
+  let productData = [];
+  let warehouseInventory = [];
+
+  function showSection(id) {
+    ['inventory', 'orders', 'addStock', 'dispatchLog', 'customerPurchase', 'distributors'].forEach(section => {
+      const el = document.getElementById(section);
+      if (el) el.style.display = (section === id ? 'block' : 'none');
+    });
+    if (id === 'orders') loadOrders();
+    if (id === 'dispatchLog') loadDispatchLog();
+    if (id === 'customerPurchase') loadPurchaseHistory();
+    if (id === 'distributors') loadDistributors();
+  }
+
+  function populateProductDropdowns() {
+    fetch("https://millet-backend.onrender.com/api/products")
+      .then(res => res.json())
+      .then(data => {
+        productData = data.products || [];
+        const productSelect = document.getElementById("productSelect");
+        const purchaseProductSelect = document.getElementById("purchaseProductSelect");
+
+        if (productSelect) {
+          productSelect.innerHTML = `<option value="">-- Select Product --</option>`;
+          const uniqueProducts = new Set();
+          productData.forEach(p => {
+            if (!uniqueProducts.has(p.name)) {
+              productSelect.innerHTML += `<option value="${p.name}">${p.name}</option>`;
+              uniqueProducts.add(p.name);
+            }
+          });
+        }
+
+        if (purchaseProductSelect) {
+          purchaseProductSelect.innerHTML = `<option value="">-- Select Product --</option>`;
+          productData.forEach(p => {
+            purchaseProductSelect.innerHTML += `<option value="${p.name}">${p.name}</option>`;
+          });
+          purchaseProductSelect.addEventListener("change", updatePurchaseProductAvailability);
+        }
+      })
+      .catch(err => console.error("❌ Failed to load products:", err));
+  }
+
+  function updateUnitAndEAN() {
+    const product = document.getElementById("productSelect")?.value;
+    const unitSpan = document.getElementById("unitDisplay");
+    const eanSpan = document.getElementById("eanDisplay");
+    const skuSpan = document.getElementById("skuDisplay");
+
+    const found = productData.find(p => p.name === product);
+
+    if (found) {
+      unitSpan.textContent = found.unit || "-";
+      eanSpan.textContent = found.ean || "-";
+      skuSpan.textContent = found.sku || "-";
+    } else {
+      unitSpan.textContent = "-";
+      eanSpan.textContent = "-";
+      skuSpan.textContent = "-";
+    }
+  }
+
+  function setupStockForm() {
+    const stockForm = document.getElementById("stockForm");
+    if (!stockForm) return;
+
+    stockForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const formData = new FormData(this);
+      const product = formData.get("product");
+      const found = productData.find(p => p.name === product);
+      if (!found) return alert("❌ Invalid product");
+
+      const stockData = {
+        name: found.name,
+        sku: found.sku,
+        unit: found.unit,
+        qty: parseInt(formData.get("qty"), 10),
+        warehouseId: warehouseId,
+        warehouseName: localStorage.getItem("warehouseName") || "Warehouse A"
+      };
+
+      fetch("https://millet-backend.onrender.com/api/add-stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(stockData),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.message?.toLowerCase().includes("success")) {
+            alert("✅ Stock added/updated successfully!");
+            this.reset();
+            updateUnitAndEAN();
+            loadInventory();
+          } else {
+            alert("❌ Failed to add stock: " + (data.message || "Unknown error"));
+          }
+        })
+        .catch(err => {
+          console.error("❌ Error:", err);
+          alert("❌ Network error while adding stock");
+        });
+    });
+  }
+
+  function loadInventory() {
+  fetch(`https://millet-backend.onrender.com/api/warehouse/inventory?warehouseId=${warehouseId}`)
+    .then(res => res.json())
+    .then(data => {
+      // ✅ Correctly assign array
+      console.log('Inventory data:', data);
+      warehouseInventory = Array.isArray(data) ? data : (data.inventory || []);
+
+      const tbody = document.getElementById("inventoryTable");
+      if (!tbody) return;
+
+      let html = "";
+      if (warehouseInventory.length === 0) {
+        html = `<tr><td colspan="7" class="text-center text-muted">No inventory found.</td></tr>`;
+      } else {
+        warehouseInventory.forEach((p, i) => {
+          html += `<tr>
+            <td>${i + 1}</td>
+            <td>${p.product}</td>
+            <td>${p.sku}</td>
+            <td>${p.ean || "-"}</td>
+            <td>${p.unit || "-"}</td>
+            <td>${p.qty}</td>
+            <td>₹${p.mrp}</td>
+          </tr>`;
+        });
+      }
+      tbody.innerHTML = html;
+
+      // ✅ Update purchase form availability
+      updatePurchaseProductAvailability();
+    })
+    .catch(err => {
+      console.error("❌ Error loading warehouse inventory:", err);
+    });
+}
+
+  function updatePurchaseProductAvailability() {
+  const selectedProduct = document.getElementById("purchaseProductSelect")?.value;
+  const availabilityDiv = document.getElementById("purchaseProductAvailability");
+
+  if (!selectedProduct || !availabilityDiv) {
+    return;
+  }
+
+  // ✅ Ensure warehouseInventory is an array
+  if (!Array.isArray(warehouseInventory)) {
+    console.error('warehouseInventory is not an array:', warehouseInventory);
+    availabilityDiv.textContent = "Available Quantity: 0";
+    return;
+  }
+
+  // ✅ Find the product safely
+  const item = warehouseInventory.find(p => p.product === selectedProduct);
+
+  if (item) {
+    availabilityDiv.textContent = `Available Quantity: ${item.qty}`;
+  } else {
+    availabilityDiv.textContent = "Available Quantity: 0";
+  }
+}
+// ✅ Load orders for this warehouse (with optional status filter)
+function loadOrders() {
+  const status = document.getElementById("statusFilter")?.value || "";
+  const url = `https://millet-backend.onrender.com/api/warehouse/orders?warehouseId=${warehouseId}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
+
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      const tbody = document.getElementById("ordersTable");
+      if (!tbody) return;
+
+      const orders = Array.isArray(data.orders) ? data.orders : [];
+      const summary = data.summary || {};
+
+      // Update the summary pills
+      document.getElementById("pendingCount").textContent   = summary.Pending   || 0;
+      document.getElementById("shippedCount").textContent   = summary.Shipped   || 0;
+      document.getElementById("deliveredCount").textContent = summary.Delivered || 0;
+
+      if (orders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">No orders found.</td></tr>`;
+        return;
+      }
+
+      let html = "";
+      orders.forEach((o, i) => {
+        const dt = o.created_at ? new Date(o.created_at).toLocaleString() : "-";
+        const actionBtn = (o.status === "Pending")
+          ? `<button class="btn btn-sm btn-success" onclick="dispatchOrder(${o.id})">Dispatch</button>`
+          : `<span class="text-muted">✔ Done</span>`;
+
+        html += `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${o.warehouseName || "-"}</td>
+            <td>${o.distributorName || "-"}</td>
+            <td>${o.productName || "-"}</td>
+            <td>${o.quantity ?? 0}</td>
+            <td>${o.status || "-"}</td>
+            <td>${dt}</td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      });
+
+      tbody.innerHTML = html;
+    })
+    .catch(err => {
+      console.error("❌ Error loading orders:", err);
+      const tbody = document.getElementById("ordersTable");
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger">Failed to load orders</td></tr>`;
+      }
+    });
+}
+
+// ✅ Dispatch (Pending -> Shipped)
+function dispatchOrder(orderId) {
+  if (!orderId) return alert("Invalid order ID");
+  if (!confirm("Dispatch this order?")) return;
+
+  fetch("https://millet-backend.onrender.com/api/warehouse/dispatch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderId })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        alert("✅ " + data.message);
+        loadOrders();
+      } else {
+        alert("❌ " + (data.message || "Failed to dispatch"));
+      }
+    })
+    .catch(err => {
+      console.error("❌ Dispatch error:", err);
+      alert("❌ Network error during dispatch");
+    });
+}
+
+  async function loadPurchaseHistory() {
+    try {
+      const warehouseIdLS = localStorage.getItem("warehouseId");
+      const warehouseNameLS = localStorage.getItem("warehouseName") || "";
+
+      if (!warehouseIdLS) {
+        throw new Error("Missing warehouseId in localStorage");
+      }
+      if (!warehouseNameLS) {
+        throw new Error("Missing warehouseName in localStorage");
+      }
+
+      const url = `https://millet-backend.onrender.com/api/warehouse/purchase-history?warehouseId=${encodeURIComponent(warehouseIdLS)}&warehouseName=${encodeURIComponent(warehouseNameLS)}`;
+      console.log("Fetching purchase history from:", url);
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+
+      const data = await res.json();
+      console.log('Purchase history:', data);
+      const tbody = document.getElementById("purchaseHistoryTable");
+      if (!tbody) {
+        console.warn("purchaseHistoryTable element not found");
+        return;
+      }
+
+      let html = "";
+      if (!Array.isArray(data) || data.length === 0) {
+        html = `<tr><td colspan="6" class="text-center text-muted">No purchases found.</td></tr>`;
+      } else {
+        data.forEach((p, i) => {
+          html += `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${p.warehouse_name ?? "-"}</td>
+              <td>${p.customer_name ?? "-"}</td>
+              <td>${p.product_name ?? "-"}</td>
+              <td>${p.quantity ?? "-"}</td>
+              <td>${p.purchase_date ? new Date(p.purchase_date).toLocaleString() : "-"}</td>
+            </tr>`;
+        });
+      }
+      tbody.innerHTML = html;
+    } catch (error) {
+      console.error("❌ Error loading purchase history:", error);
+    }
+  }
+
+  function setupPurchaseForm() {
+    const purchaseForm = document.getElementById("purchaseForm");
+    if (!purchaseForm) return;
+
+    purchaseForm.addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const formData = new FormData(this);
+      const customerName = formData.get("customerName").trim();
+      const productName = formData.get("productName");
+      const quantity = parseInt(formData.get("quantity"), 10);
+
+      if (!customerName) return alert("Please enter customer name");
+      if (!productName) return alert("Please select a product");
+      if (isNaN(quantity) || quantity <= 0) return alert("Please enter a valid quantity");
+
+      const inventoryItem = warehouseInventory.find(p => p.product === productName);
+      const availableQuantity = inventoryItem ? inventoryItem.qty : 0;
+
+      if (quantity > availableQuantity) {
+        return alert(`❌ Only ${availableQuantity} units of "${productName}" are available.`);
+      }
+
+      const purchaseData = {
+        warehouseId,
+        warehouseName: localStorage.getItem("warehouseName") || "Warehouse A",
+        customerName,
+        productName,
+        quantity,
+        createdAt: new Date().toISOString()
+      };
+
+      fetch("https://millet-backend.onrender.com/api/warehouse/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(purchaseData)
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.message && data.message.toLowerCase().includes("success")) {
+            alert("✅ Purchase recorded successfully!");
+            purchaseForm.reset();
+            updatePurchaseProductAvailability();
+            loadPurchaseHistory();
+            loadInventory();
+          } else {
+            alert("❌ Failed to record purchase: " + (data.message || "Unknown error"));
+          }
+        })
+        .catch(err => {
+          console.error("❌ Error during purchase:", err);
+          alert("❌ Network error while recording purchase");
+        });
+    });
+  }
+
+  function loadDispatchLog() {
+    fetch(`https://millet-backend.onrender.com/api/activity-logs?warehouseName=${encodeURIComponent(warehouseName)}`)
+      .then(res => res.json())
+      .then(data => {
+        const tbody = document.getElementById("activityListTable");
+        if (!tbody) return;
+
+        let html = "";
+        if (!Array.isArray(data) || data.length === 0) {
+          html = `<tr><td colspan="4" class="text-center text-muted">No activity logs found.</td></tr>`;
+        } else {
+          data.forEach((log, i) => {
+            html += `
+              <tr>
+                <td>${i + 1}</td>
+                <td>${log.source || "-"}</td>
+                <td>${log.description || "-"}</td>
+                <td>${log.timestamp ? new Date(log.timestamp).toLocaleString() : "-"}</td>
+              </tr>`;
+          });
+        }
+        tbody.innerHTML = html;
+      })
+      .catch(err => {
+        console.error("❌ Error loading activity logs:", err);
+      });
+  }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const warehouseName = localStorage.getItem("warehouseName");
+
+  if (!warehouseName) {
+    alert("❌ Warehouse name missing. Please log in again.");
+    window.location.href = "login.html";
+    return;
+  }
+
+  fetch(`https://millet-backend.onrender.com/api/distributors?warehouse=${encodeURIComponent(warehouseName)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) {
+        console.error("❌ Failed to load distributors:", data.message);
+        return;
+      }
+      console.log("✅ Filtered distributors:", data.distributors);
+
+      // Example: render in table
+      const tableBody = document.getElementById("distributorTableBody");
+      if (tableBody) {
+        tableBody.innerHTML = data.distributors
+          .map(d => `
+            <tr>
+              <td>${d.name}</td>
+              <td>${d.city}</td>
+              <td>${d.email}</td>
+              <td>${d.warehouse}</td>
+            </tr>
+          `)
+          .join("");
+      }
+    })
+    .catch(err => {
+      console.error("❌ Fetch error:", err);
+    });
+});
+
+  function init() {
+    populateProductDropdowns();
+    loadInventory();
+    setupStockForm();
+    setupPurchaseForm();
+
+    document.getElementById("productSelect")?.addEventListener("change", updateUnitAndEAN);
+    document.getElementById("statusFilter")?.addEventListener("change", loadOrders);
+
+    showSection("inventory");
+  }
+
+  window.onload = init;
+</script>
+</body>
+</html> 
