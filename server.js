@@ -685,17 +685,27 @@ app.get("/api/distributor/products", async (req, res) => {
   }
 
   try {
-    // Step 1: Get distributor's warehouse_id
+    // Step 1: Get distributor's warehouse name
     const [distributor] = await connection.query(
-      "SELECT warehouse_id FROM distributors WHERE id = ?",
+      "SELECT warehouse FROM distributors WHERE id = ?",
       [distributorId]
     );
     if (distributor.length === 0) {
       return res.status(404).json({ error: "Distributor not found" });
     }
-    const warehouseId = distributor[0].warehouse_id;
+    const warehouseName = distributor[0].warehouse;
 
-    // Step 2: Get products from warehouse_inventory + products
+    // Step 2: Find warehouse_id from warehouses table using the name
+    const [warehouse] = await connection.query(
+      "SELECT id FROM warehouses WHERE name = ?",
+      [warehouseName]
+    );
+    if (warehouse.length === 0) {
+      return res.status(404).json({ error: "Warehouse not found" });
+    }
+    const warehouseId = warehouse[0].id;
+
+    // Step 3: Get products from warehouse_inventory + products
     const [products] = await connection.query(
       `SELECT p.id, p.name, p.price, wi.qty
        FROM warehouse_inventory wi
