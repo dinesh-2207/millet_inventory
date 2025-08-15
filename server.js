@@ -707,7 +707,7 @@ app.get("/api/distributor/products", async (req, res) => {
 
     // Step 3: Get products from warehouse_inventory + products
     const [products] = await connection.query(
-      `SELECT p.id, p.name, p.price, wi.qty
+      `SELECT p.id, p.name, wi.qty
        FROM warehouse_inventory wi
        JOIN products p ON wi.product_id = p.id
        WHERE wi.warehouse_id = ? AND wi.qty > 0`,
