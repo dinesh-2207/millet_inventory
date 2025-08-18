@@ -722,7 +722,7 @@ app.get("/api/distributor/products", async (req, res) => {
 });
 
 // =======================
-// POST Place Order for Distributor
+// POST Order (Distributor places order)
 // =======================
 app.post("/api/distributor/orders", async (req, res) => {
   const { distributorId, productId, qty } = req.body;
@@ -741,21 +741,11 @@ app.post("/api/distributor/orders", async (req, res) => {
     }
     const warehouseId = distributor[0].warehouse_id;
 
-    // Step 2: Get warehouse name
-    const [warehouse] = await connection.query(
-      "SELECT name FROM warehouses WHERE id = ?",
-      [warehouseId]
-    );
-    if (warehouse.length === 0) {
-      return res.status(404).json({ error: "Warehouse not found" });
-    }
-    const warehouseName = warehouse[0].name;
-
-    // Step 3: Insert into distributor_orders
+    // Step 2: Insert into distributor_orders (store warehouse_id, not name)
     await connection.query(
-      `INSERT INTO distributor_orders (distributor_id, product_id, warehouse, qty)
-       VALUES (?, ?, ?, ?)`,
-      [distributorId, productId, warehouseName, qty]
+      `INSERT INTO distributor_orders (distributor_id, product_id, warehouse_id, qty, status)
+       VALUES (?, ?, ?, ?, 'Pending')`,
+      [distributorId, productId, warehouseId, qty]
     );
 
     res.json({ success: true, message: "Order placed successfully" });
@@ -764,7 +754,6 @@ app.post("/api/distributor/orders", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 // =======================
 // GET Orders for Distributor
 // =======================
@@ -776,9 +765,10 @@ app.get("/api/distributor/orders", async (req, res) => {
 
   try {
     const [orders] = await connection.query(
-      `SELECT o.id, p.name AS product_name, o.qty, o.status, o.order_date, o.warehouse
+      `SELECT o.id, p.name AS product_name, o.qty, o.status, o.date, w.name AS warehouse
        FROM distributor_orders o
        JOIN products p ON o.product_id = p.id
+       JOIN warehouses w ON o.warehouse_id = w.id
        WHERE o.distributor_id = ?`,
       [distributorId]
     );
