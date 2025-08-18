@@ -765,7 +765,7 @@ app.get("/api/distributor/orders", async (req, res) => {
 
   try {
     const [orders] = await connection.query(
-      `SELECT o.id, p.name AS product_name, o.qty, o.status, o.date, w.name AS warehouse
+      `SELECT o.id, p.name AS product_name, o.qty, o.status, o.order_date, w.name AS warehouse_name
        FROM distributor_orders o
        JOIN products p ON o.product_id = p.id
        JOIN warehouses w ON o.warehouse_id = w.id
